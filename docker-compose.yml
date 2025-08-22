@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: postgres
+      TZ: Asia/Kolkata
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-airflow}"]
+      interval: 10s
+      retries: 5
+
+  airflow:
+    image: apache/airflow:2.7.1
+    depends_on:
+      postgres:
+        condition: service_started
+    environment:
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      _PIP_ADDITIONAL_REQUIREMENTS: psycopg2-binary
+      ALPHAVANTAGE_API_KEY: ${ALPHAVANTAGE_API_KEY}
+      DB_URL: ${DB_URL}
+      TICKERS: ${TICKERS:-AAPL,MSFT,GOOG}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./dags/scripts:/opt/airflow/dags/scripts
+      - ./logs:/opt/airflow/logs
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "8080:8080"
+    entrypoint: /bin/bash -c
+    command: >
+      "airflow db upgrade &&
+       airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin || true &&
+       exec airflow scheduler & exec airflow webserver"
+
+  adminer:   
+    image: adminer
+    restart: always
+    ports:
+      - "8081:8080"
+
+volumes:
+  pgdata:
